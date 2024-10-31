@@ -2,10 +2,16 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <math.h>
+#include <time.h>
+#include <unistd.h> // Para sysconf(_SC_NPROCESSORS_ONLN)
 
 #define MAX_SIZE 100
 
 typedef struct {
+    int row_start;
+    int row_end;
+    int col_start;
+    int col_end;
     int row;
     int col;
     double **matrix;
@@ -13,35 +19,43 @@ typedef struct {
     double *col_geom_mean;
 } MatrixData;
 
-void *calculate_row_mean(void *arg) {
+
+double pow(double base, int power) {
+    double result = 1.0;
+    while (power > 0) {
+        if (power % 2 == 1) {
+            result *= base;
+        }
+        base *= base;
+        power /= 2;
+    }
+    return result;
+}
+
+void *calculate_means(void *arg) {
     MatrixData *data = (MatrixData *)arg;
-    int row = data->row;
     int col = data->col;
     double **matrix = data->matrix;
 
-    for (int i = 0; i < row; i++) {
+    // Calcular média das linhas
+    for (int i = data->row_start; i < data->row_end; i++) {
         double sum = 0.0;
         for (int j = 0; j < col; j++) {
             sum += matrix[i][j];
         }
         data->row_mean[i] = sum / col;
     }
-    pthread_exit(NULL);
-}
 
-void *calculate_col_geom_mean(void *arg) {
-    MatrixData *data = (MatrixData *)arg;
+    // Calcular média geométrica das colunas
     int row = data->row;
-    int col = data->col;
-    double **matrix = data->matrix;
-
-    for (int j = 0; j < col; j++) {
+    for (int j = data->col_start; j < data->col_end; j++) {
         double product = 1.0;
         for (int i = 0; i < row; i++) {
             product *= matrix[i][j];
         }
         data->col_geom_mean[j] = pow(product, 1.0 / row);
     }
+
     pthread_exit(NULL);
 }
 
@@ -80,7 +94,7 @@ void read_matrix_file(const char *filename, double ***matrix, int *row, int *col
     fclose(file);
 }
 
-void write_results_to_file(const char *filename, double *row_mean, int row, double *col_geom_mean, int col) {
+void write_results_to_file(const char *filename, double *row_mean, int row, const double *col_geom_mean, int col) {
     FILE *file = fopen(filename, "w");
     if (!file) {
         perror("Failed to open result file");
@@ -101,13 +115,14 @@ void write_results_to_file(const char *filename, double *row_mean, int row, doub
 
 int main(int argc, char *argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <M> <N> <output_file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <M> <N> <output_file> [n_threads]\n", argv[0]);
         return EXIT_FAILURE;
     }
 
     int row = atoi(argv[1]);
     int col = atoi(argv[2]);
     const char *output_file = argv[3];
+    int n_threads = (argc == 5) ? atoi(argv[4]) : sysconf(_SC_NPROCESSORS_ONLN);
 
     srand(time(NULL));
     generate_matrix_file(row, col, "matrix.txt");
@@ -118,14 +133,29 @@ int main(int argc, char *argv[]) {
     double *row_mean = (double *)malloc(row * sizeof(double));
     double *col_geom_mean = (double *)malloc(col * sizeof(double));
 
-    MatrixData data = {row, col, matrix, row_mean, col_geom_mean};
+    pthread_t threads[n_threads];
+    MatrixData thread_data[n_threads];
 
-    pthread_t thread1, thread2;
-    pthread_create(&thread1, NULL, calculate_row_mean, &data);
-    pthread_create(&thread2, NULL, calculate_col_geom_mean, &data);
+    int rows_per_thread = row / n_threads;
+    int cols_per_thread = col / n_threads;
 
-    pthread_join(thread1, NULL);
-    pthread_join(thread2, NULL);
+    for (int i = 0; i < n_threads; i++) {
+        thread_data[i].row_start = i * rows_per_thread;
+        thread_data[i].row_end = (i == n_threads - 1) ? row : (i + 1) * rows_per_thread;
+        thread_data[i].col_start = i * cols_per_thread;
+        thread_data[i].col_end = (i == n_threads - 1) ? col : (i + 1) * cols_per_thread;
+        thread_data[i].row = row;
+        thread_data[i].col = col;
+        thread_data[i].matrix = matrix;
+        thread_data[i].row_mean = row_mean;
+        thread_data[i].col_geom_mean = col_geom_mean;
+
+        pthread_create(&threads[i], NULL, calculate_means, &thread_data[i]);
+    }
+
+    for (int i = 0; i < n_threads; i++) {
+        pthread_join(threads[i], NULL);
+    }
 
     write_results_to_file(output_file, row_mean, row, col_geom_mean, col);
 
