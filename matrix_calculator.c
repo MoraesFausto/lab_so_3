@@ -20,18 +20,6 @@ typedef struct {
 } MatrixData;
 
 
-double pow(double base, int power) {
-    double result = 1.0;
-    while (power > 0) {
-        if (power % 2 == 1) {
-            result *= base;
-        }
-        base *= base;
-        power /= 2;
-    }
-    return result;
-}
-
 void *calculate_means(void *arg) {
     MatrixData *data = (MatrixData *)arg;
     int col = data->col;
