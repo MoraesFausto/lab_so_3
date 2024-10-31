@@ -1,3 +1,0 @@
-/home/f4ustx/CLionProjects/lab_so_3/cmake-build-debug/CMakeFiles/lab_so_3.dir
-/home/f4ustx/CLionProjects/lab_so_3/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/f4ustx/CLionProjects/lab_so_3/cmake-build-debug/CMakeFiles/rebuild_cache.dir
